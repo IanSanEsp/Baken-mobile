@@ -1,21 +1,29 @@
 const express = require('express');
 const mysql   = require('mysql2/promise');
 const cors    = require('cors');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// CORS — permite cualquier origen (browser, APK Capacitor, etc.)
+app.use(cors({
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
+app.options('*', cors());
 app.use(express.json());
 
 const dbConfig = {
-    host:           process.env.DB_HOST,
-    user:           process.env.DB_USER,
-    password:       process.env.DB_PASSWORD,
-    database:       process.env.DB_NAME,
-    port:           parseInt(process.env.DB_PORT) || 3306,
-    connectTimeout: 30000
+    host:               process.env.DB_HOST,
+    user:               process.env.DB_USER,
+    password:           process.env.DB_PASSWORD,
+    database:           process.env.DB_NAME,
+    port:               parseInt(process.env.DB_PORT) || 3306,
+    multipleStatements: true,
+    connectTimeout:     30000
 };
 
 let pool;
@@ -29,6 +37,7 @@ async function connectDB() {
         return true;
     } catch (e) {
         console.error('Error conectando a MySQL:', e.message);
+        console.error('  Host:', dbConfig.host, '| Puerto:', dbConfig.port, '| BD:', dbConfig.database);
         return false;
     }
 }
@@ -735,9 +744,13 @@ app.get('/', (req, res) => {
 // ─── Iniciar servidor ──────────────────────────────────────────────────────────
 async function startServer() {
     const ok = await connectDB();
-    if (!ok) { console.error('No se pudo conectar. Abortando.'); process.exit(1); }
+    if (!ok) {
+        console.error('⚠ No se pudo conectar a la BD. El servidor arrancará de todos modos.');
+        console.error('  Reintentando conexión en 10 segundos...');
+        setTimeout(connectDB, 10000);
+    }
     const server = app.listen(PORT, () => {
-        console.log(`\nServidor corriendo en http://localhost:${PORT}`);
+        console.log(`\nServidor corriendo en puerto ${PORT}`);
         console.log(`BD: ${dbConfig.database}\n`);
     });
     server.on('error', (e) => {
