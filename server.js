@@ -1,29 +1,20 @@
 const express = require('express');
 const mysql   = require('mysql2/promise');
 const cors    = require('cors');
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS — permite cualquier origen (browser, APK Capacitor, etc.)
-app.use(cors({
-    origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-app.options('*', cors());
+app.use(cors());
 app.use(express.json());
 
 const dbConfig = {
-    host:               process.env.DB_HOST,
-    user:               process.env.DB_USER,
-    password:           process.env.DB_PASSWORD,
-    database:           process.env.DB_NAME,
-    port:               parseInt(process.env.DB_PORT) || 3306,
-    multipleStatements: true,
-    connectTimeout:     30000
+    host:           'yamabiko.proxy.rlwy.net',
+    user:           'root',
+    password:       'hdFfITZienJPkyyohBLiETNwDmRwSjgJ',
+    database:       'railway',
+    port:           28452,
+    connectTimeout: 30000
 };
 
 let pool;
@@ -37,7 +28,6 @@ async function connectDB() {
         return true;
     } catch (e) {
         console.error('Error conectando a MySQL:', e.message);
-        console.error('  Host:', dbConfig.host, '| Puerto:', dbConfig.port, '| BD:', dbConfig.database);
         return false;
     }
 }
@@ -58,53 +48,28 @@ function obtenerBloqueActual() {
     return null;
 }
 
-// ─── Login móvil (Alumno + Profesor) ─────────────────────────────────────────
+// ─── Login alumno (App Móvil) ───────────────────────────────────────────────
 app.post('/api/login', async (req, res) => {
-    const { correo, contrasena } = req.body;
-    if (!correo || !contrasena)
-        return res.status(400).json({ success: false, message: 'Faltan credenciales' });
+    const { correo, boleta } = req.body;
     try {
-        // Intentar como Alumno
-        let [rows] = await pool.execute(
+        const [rows] = await pool.execute(
             `SELECT u.id_usuarios AS boleta, u.nombre, u.correo, u.turno,
                     tu.nombre_tipo AS tipo_usuario,
                     g.id_grupo, g.nombre_grupo AS grupo, g.semestre, g.turno AS grupo_turno
              FROM Usuarios u
              INNER JOIN tipo_usuario tu ON tu.id_tipo_usuario = u.tipo_usuario
              LEFT JOIN Grupos g ON g.id_grupo = u.id_grupo
-             WHERE u.correo = ? AND u.contraseña = ? AND tu.nombre_tipo = 'Alumno'`,
-            [correo, contrasena]
+             WHERE u.correo = ? AND u.id_usuarios = ? AND tu.nombre_tipo = 'Alumno'`,
+            [correo, boleta]
         );
-        if (rows.length > 0) {
-            const a = rows[0];
-            return res.json({ success: true, message: 'Login exitoso', usuario: {
-                id: a.boleta, nombre: a.nombre, correo: a.correo, boleta: a.boleta,
-                tipo_usuario: 'Alumno',
-                grupo: a.grupo || 'Sin grupo', id_grupo: a.id_grupo || null,
-                semestre: a.semestre || 1, turno: a.grupo_turno || 'No asignado'
-            }});
-        }
-
-        // Intentar como Profesor
-        [rows] = await pool.execute(
-            `SELECT u.id_usuarios, u.nombre, u.correo,
-                    tu.nombre_tipo AS tipo_usuario
-             FROM Usuarios u
-             INNER JOIN tipo_usuario tu ON tu.id_tipo_usuario = u.tipo_usuario
-             INNER JOIN Profesores p    ON p.id_profesor      = u.id_usuarios
-             WHERE u.correo = ? AND u.contraseña = ? AND tu.nombre_tipo = 'Profesor'`,
-            [correo, contrasena]
-        );
-        if (rows.length > 0) {
-            const p = rows[0];
-            return res.json({ success: true, message: 'Login exitoso', usuario: {
-                id: p.id_usuarios, nombre: p.nombre, correo: p.correo,
-                boleta: p.id_usuarios,
-                tipo_usuario: 'Profesor'
-            }});
-        }
-
-        return res.status(401).json({ success: false, message: 'Correo o contraseña incorrectos' });
+        if (rows.length === 0)
+            return res.status(401).json({ success: false, message: 'Correo o boleta incorrectos' });
+        const a = rows[0];
+        res.json({ success: true, message: 'Login exitoso', usuario: {
+            id: a.boleta, nombre: a.nombre, correo: a.correo, boleta: a.boleta,
+            grupo: a.grupo || 'Sin grupo', id_grupo: a.id_grupo || null,
+            semestre: a.semestre || 1, turno: a.grupo_turno || 'No asignado'
+        }});
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -169,7 +134,7 @@ app.post('/api/horario', async (req, res) => {
              INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
              INNER JOIN Profesores p   ON p.id_profesor       = hf.id_profesor
              INNER JOIN Usuarios   u   ON u.id_usuarios       = p.id_profesor
-             LEFT  JOIN Salones    s   ON s.id_salon           = hf.id_salon
+             INNER JOIN Salones    s   ON s.id_salon           = hf.id_salon
              LEFT  JOIN tipo_salon ts  ON ts.id_tipo_salon     = s.tipo_salon
              WHERE hor.id_grupo = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes'), hf.hora_inicio`,
@@ -274,7 +239,7 @@ app.post('/api/salones/buscar', async (req, res) => {
                  FROM Salones s LEFT JOIN tipo_salon ts ON ts.id_tipo_salon = s.tipo_salon WHERE 1=1`;
         const p = [];
         if (nombre)                                    { q += ` AND s.nombre_salon LIKE ?`;       p.push(`%${nombre}%`); }
-        if (piso !== undefined && piso !== '')         { q += ` AND s.piso = ?`;                  p.push(parseInt(piso)); }
+        if (piso !== undefined && piso !== '')         { q += ` AND s.piso = ?`;                  p.push(piso === 'L' ? 0 : parseInt(piso)); }
         if (disponibilidad && disponibilidad !== 'Todos') { q += ` AND s.estado = ?`;             p.push(disponibilidad); }
         if (tipo && tipo !== 'Todos')                  { q += ` AND ts.nombre_tipo_salon = ?`;    p.push(tipo); }
         q += ` ORDER BY s.piso, s.nombre_salon`;
@@ -285,12 +250,19 @@ app.post('/api/salones/buscar', async (req, res) => {
 
 // ─── Buscar grupos ────────────────────────────────────────────────────────
 app.post('/api/grupos/buscar', async (req, res) => {
-    const { nombre, semestre, turno } = req.body;
+    const { nombre, semestre, semestres, turno } = req.body;
     try {
         let q = `SELECT id_grupo, nombre_grupo, semestre, area_estudio, turno FROM Grupos WHERE 1=1`;
         const p = [];
         if (nombre)                                    { q += ` AND nombre_grupo LIKE ?`; p.push(`%${nombre}%`); }
-        if (semestre !== undefined && semestre !== '') { q += ` AND semestre = ?`;        p.push(parseInt(semestre)); }
+        // Soporte array semestres (nuevo) y valor único semestre (retrocompatible)
+        if (Array.isArray(semestres) && semestres.length > 0) {
+            q += ` AND semestre IN (${semestres.map(() => '?').join(',')})`;
+            p.push(...semestres);
+        } else if (semestre !== undefined && semestre !== '') {
+            q += ` AND semestre = ?`;
+            p.push(parseInt(semestre));
+        }
         if (turno && turno !== 'Todos')                { q += ` AND turno = ?`;           p.push(turno); }
         q += ` ORDER BY semestre, nombre_grupo`;
         const [rows] = await pool.execute(q, p);
@@ -312,32 +284,10 @@ app.get('/api/horario/grupo/:id_grupo', async (req, res) => {
              INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
              INNER JOIN Profesores p   ON p.id_profesor       = hf.id_profesor
              INNER JOIN Usuarios   u   ON u.id_usuarios       = p.id_profesor
-             LEFT  JOIN Salones    s   ON s.id_salon           = hf.id_salon
+             INNER JOIN Salones    s   ON s.id_salon           = hf.id_salon
              WHERE hor.id_grupo = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes'), hf.hora_inicio`,
             [req.params.id_grupo]
-        );
-        res.json({ success: true, horario: rows });
-    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
-// ─── Horario completo de un profesor ─────────────────────────────────────────
-app.get('/api/horario/profesor/:id_profesor', async (req, res) => {
-    try {
-        const [rows] = await pool.execute(
-            `SELECT hf.id_horario_fijo_detalle, hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
-                    hf.id_materia, hf.id_profesor, hf.id_salon,
-                    m.nombre_materia AS materia,
-                    hor.id_grupo, g.nombre_grupo,
-                    s.nombre_salon AS numero_salon, s.piso
-             FROM Horario_Fijo hf
-             INNER JOIN horarios   hor ON hor.id_horario_fijo = hf.id_horario_fijo
-             INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
-             INNER JOIN Grupos     g   ON g.id_grupo          = hor.id_grupo
-             LEFT  JOIN Salones    s   ON s.id_salon          = hf.id_salon
-             WHERE hf.id_profesor = ?
-             ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes'), hf.hora_inicio`,
-            [req.params.id_profesor]
         );
         res.json({ success: true, horario: rows });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
@@ -473,7 +423,7 @@ app.get('/api/horarios/completo/:semestre', async (req, res) => {
              INNER JOIN Materias   m ON m.id_materia        = hf.id_materia
              INNER JOIN Profesores p ON p.id_profesor       = hf.id_profesor
              INNER JOIN Usuarios   u ON u.id_usuarios       = p.id_profesor
-             LEFT  JOIN Salones    s ON s.id_salon           = hf.id_salon
+             INNER JOIN Salones    s ON s.id_salon           = hf.id_salon
              WHERE g.semestre = ?
              ORDER BY g.nombre_grupo,
                       FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes'),
@@ -687,55 +637,6 @@ app.get('/api/inicio/favoritos/:boleta', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ─── Crear horario fijo ───────────────────────────────────────────────────────
-app.post('/api/horario/crear', async (req, res) => {
-    const { id_grupo, id_materia, id_profesor, id_salon, dia, hora_inicio, hora_fin } = req.body;
-    if (!id_grupo || !id_materia || !id_profesor || !dia || !hora_inicio || !hora_fin)
-        return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
-
-    // Calcular bloque_horario a partir de hora_inicio (07:xx → bloque 1, 08:xx → 2, …)
-    const hora = parseInt(hora_inicio.split(':')[0]);
-    const bloquesBase = [7,8,9,10,11,12,13,14,15,16,17,18,19,20];
-    const bloque_horario = bloquesBase.indexOf(hora) + 1;
-    if (bloque_horario < 1)
-        return res.status(400).json({ success: false, message: 'Hora de inicio no válida (rango 07:00–20:50)' });
-
-    // id_salon es opcional (puede ser null si no aplica salon)
-    const salonVal = (id_salon !== undefined && id_salon !== null && id_salon !== '') ? parseInt(id_salon) : null;
-
-    try {
-        // 1. Buscar si ya existe un registro en horarios para este grupo
-        const [existing] = await pool.execute(
-            `SELECT id_horario_fijo FROM horarios WHERE id_grupo = ? LIMIT 1`,
-            [parseInt(id_grupo)]
-        );
-
-        let id_horario_fijo;
-        if (existing.length > 0) {
-            id_horario_fijo = existing[0].id_horario_fijo;
-        } else {
-            const [ins] = await pool.execute(
-                `INSERT INTO horarios (id_grupo) VALUES (?)`,
-                [parseInt(id_grupo)]
-            );
-            id_horario_fijo = ins.insertId;
-        }
-
-        // 2. Insertar el detalle en Horario_Fijo
-        const [result] = await pool.execute(
-            `INSERT INTO Horario_Fijo
-               (id_horario_fijo, id_materia, id_profesor, id_salon, dia, hora_inicio, hora_fin, bloque_horario)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id_horario_fijo, parseInt(id_materia), parseInt(id_profesor),
-             salonVal, dia, hora_inicio, hora_fin, bloque_horario]
-        );
-
-        res.json({ success: true, id: result.insertId, message: 'Horario registrado correctamente' });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
 // ─── Raíz ──────────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
     res.json({ status: 'ok', app: 'BDSM CECyT9 Web API', db: dbConfig.database });
@@ -744,13 +645,9 @@ app.get('/', (req, res) => {
 // ─── Iniciar servidor ──────────────────────────────────────────────────────────
 async function startServer() {
     const ok = await connectDB();
-    if (!ok) {
-        console.error('⚠ No se pudo conectar a la BD. El servidor arrancará de todos modos.');
-        console.error('  Reintentando conexión en 10 segundos...');
-        setTimeout(connectDB, 10000);
-    }
+    if (!ok) { console.error('No se pudo conectar. Abortando.'); process.exit(1); }
     const server = app.listen(PORT, () => {
-        console.log(`\nServidor corriendo en puerto ${PORT}`);
+        console.log(`\nServidor corriendo en http://localhost:${PORT}`);
         console.log(`BD: ${dbConfig.database}\n`);
     });
     server.on('error', (e) => {
