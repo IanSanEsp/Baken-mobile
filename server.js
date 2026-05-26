@@ -251,7 +251,29 @@ app.get('/api/horario/grupo/:id_grupo', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 12. Horario de salón hoy
+// 12. Horario completo de un profesor (todas sus clases de la semana)
+app.get('/api/horario/profesor/:id_profesor', async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            `SELECT hf.id_horario_fijo_detalle, hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
+                    hf.id_salon,
+                    m.nombre_materia AS materia,
+                    g.nombre_grupo,
+                    s.nombre_salon AS numero_salon, s.piso
+             FROM Horario_Fijo hf
+             INNER JOIN horarios hor ON hor.id_horario_fijo = hf.id_horario_fijo
+             INNER JOIN Materias m   ON m.id_materia        = hf.id_materia
+             INNER JOIN Grupos   g   ON g.id_grupo           = hor.id_grupo
+             INNER JOIN Salones  s   ON s.id_salon            = hf.id_salon
+             WHERE hf.id_profesor = ?
+             ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes'), hf.hora_inicio`,
+            [req.params.id_profesor]
+        );
+        res.json({ success: true, horario: rows });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 14. Horario de salón hoy
 app.get('/api/horario/salon/:id_salon', async (req, res) => {
     const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
     const diaActual = dias[new Date().getDay()];
