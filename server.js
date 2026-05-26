@@ -35,7 +35,8 @@ async function connectDB() {
 
 // 1. Login de alumno
 app.post('/api/login', async (req, res) => {
-    const { correo, boleta } = req.body;
+    const { correo, boleta, contrasena } = req.body;
+    const id = boleta ?? contrasena;   // la app manda 'contrasena', pero es la boleta del alumno
     try {
         const [rows] = await pool.execute(
             `SELECT u.id_usuarios AS boleta, u.nombre, u.correo, u.turno,
@@ -45,7 +46,7 @@ app.post('/api/login', async (req, res) => {
              INNER JOIN tipo_usuario tu ON tu.id_tipo_usuario = u.tipo_usuario
              LEFT JOIN Grupos g ON g.id_grupo = u.id_grupo
              WHERE u.correo = ? AND u.id_usuarios = ? AND tu.nombre_tipo = 'Alumno'`,
-            [correo, boleta]
+            [correo, id]
         );
         if (rows.length === 0)
             return res.status(401).json({ success: false, message: 'Correo o boleta incorrectos' });
