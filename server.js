@@ -3,7 +3,8 @@ const mysql   = require('mysql2/promise');
 const cors    = require('cors');
 
 const app  = express();
-const PORT = process.env.PORT || 3000;   // Railway asigna el puerto vía variable de entorno
+process.env.PORT = process.env.PORT || '3000';
+const PORT = parseInt(process.env.PORT);
 
 app.use(cors());
 app.use(express.json());
