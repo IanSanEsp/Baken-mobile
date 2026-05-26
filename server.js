@@ -36,7 +36,7 @@ async function connectDB() {
 // 1. Login de alumno
 app.post('/api/login', async (req, res) => {
     const { correo, boleta, contrasena } = req.body;
-    const id = boleta ?? contrasena;   // la app manda 'contrasena', pero es la boleta del alumno
+    const id = boleta ?? contrasena;   // la app manda 'contrasena', pero es el ID del usuario
     try {
         const [rows] = await pool.execute(
             `SELECT u.id_usuarios AS boleta, u.nombre, u.correo, u.turno,
@@ -45,25 +45,26 @@ app.post('/api/login', async (req, res) => {
              FROM Usuarios u
              INNER JOIN tipo_usuario tu ON tu.id_tipo_usuario = u.tipo_usuario
              LEFT JOIN Grupos g ON g.id_grupo = u.id_grupo
-             WHERE u.correo = ? AND u.id_usuarios = ? AND tu.nombre_tipo = 'Alumno'`,
+             WHERE u.correo = ? AND u.id_usuarios = ?`,
             [correo, id]
         );
         if (rows.length === 0)
-            return res.status(401).json({ success: false, message: 'Correo o boleta incorrectos' });
+            return res.status(401).json({ success: false, message: 'Correo o contraseña incorrectos' });
 
-        const alumno = rows[0];
+        const usuario = rows[0];
         res.json({
             success: true,
             message: 'Login exitoso',
             usuario: {
-                id:       alumno.boleta,
-                nombre:   alumno.nombre,
-                correo:   alumno.correo,
-                boleta:   alumno.boleta,
-                grupo:    alumno.grupo || 'Sin grupo',
-                id_grupo: alumno.id_grupo || null,
-                semestre: alumno.semestre || 1,
-                turno:    alumno.grupo_turno || 'No asignado'
+                id:           usuario.boleta,
+                nombre:       usuario.nombre,
+                correo:       usuario.correo,
+                boleta:       usuario.boleta,
+                tipo_usuario: usuario.tipo_usuario,   // 'Alumno' o 'Profesor'
+                grupo:        usuario.grupo    || 'Sin grupo',
+                id_grupo:     usuario.id_grupo || null,
+                semestre:     usuario.semestre || 1,
+                turno:        usuario.grupo_turno || usuario.turno || 'No asignado'
             }
         });
     } catch (e) { res.status(500).json({ success: false, message: 'Error en el servidor' }); }
