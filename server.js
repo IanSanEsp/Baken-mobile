@@ -417,8 +417,8 @@ app.get('/', (req, res) => {
 async function startServer() {
     const ok = await connectDB();
     if (!ok) { console.error('No se pudo conectar a MySQL'); process.exit(1); }
-    app.listen(PORT, () => {
-        console.log(`\nServidor corriendo en puerto ${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\nServidor corriendo en 0.0.0.0:${PORT}`);
         console.log(`BD: ${dbConfig.host}:${dbConfig.port} → ${dbConfig.database}\n`);
     });
 }
