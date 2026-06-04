@@ -1,7 +1,8 @@
 const express = require('express');
 const mysql   = require('mysql2/promise');
 const cors    = require('cors');
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+// dotenv no se usa en Railway (las variables se inyectan directamente por la plataforma)
+// require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
