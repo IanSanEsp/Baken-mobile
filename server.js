@@ -160,11 +160,17 @@ app.get('/api/alumno/:boleta', async (req, res) => {
 app.post('/api/horario', async (req, res) => {
     try {
         const [rows] = await pool.execute(
-            `SELECT hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
+            `SELECT hf.dia,
+                    COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                    COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                    hf.bloque_horario,
                     m.nombre_materia AS materia,
                     u.nombre AS profesor_nombre,
-                    s.nombre_salon AS numero_salon, s.piso,
-                    ts.nombre_tipo_salon AS salon_tipo
+                    COALESCE(st.nombre_salon, s.nombre_salon) AS numero_salon,
+                    COALESCE(st.piso, s.piso)                 AS piso,
+                    ts.nombre_tipo_salon AS salon_tipo,
+                    hd.motivo_cambio,
+                    (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
              FROM Horario_Fijo hf
              INNER JOIN horarios   hor ON hor.id_horario_fijo = hf.id_horario_fijo
              INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
@@ -172,6 +178,9 @@ app.post('/api/horario', async (req, res) => {
              INNER JOIN Usuarios   u   ON u.id_usuarios       = p.id_profesor
              LEFT  JOIN Salones    s   ON s.id_salon           = hf.id_salon
              LEFT  JOIN tipo_salon ts  ON ts.id_tipo_salon     = s.tipo_salon
+             LEFT  JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                            AND hd.fecha = CURDATE()
+             LEFT  JOIN Salones    st  ON st.id_salon          = hd.id_salon_temporal
              WHERE hor.id_grupo = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'), hf.hora_inicio`,
             [req.body.grupo]
@@ -303,17 +312,27 @@ app.post('/api/grupos/buscar', async (req, res) => {
 app.get('/api/horario/grupo/:id_grupo', async (req, res) => {
     try {
         const [rows] = await pool.execute(
-            `SELECT hf.id_horario_fijo_detalle, hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
-                    hf.id_materia, hf.id_profesor, hf.id_salon,
+            `SELECT hf.id_horario_fijo_detalle, hf.dia,
+                    COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                    COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                    hf.bloque_horario,
+                    hf.id_materia, hf.id_profesor,
+                    COALESCE(hd.id_salon_temporal, hf.id_salon) AS id_salon,
                     m.nombre_materia AS materia,
                     u.nombre AS profesor_nombre,
-                    s.nombre_salon AS numero_salon, s.piso
+                    COALESCE(st.nombre_salon, s.nombre_salon) AS numero_salon,
+                    COALESCE(st.piso, s.piso)                 AS piso,
+                    hd.motivo_cambio,
+                    (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
              FROM Horario_Fijo hf
              INNER JOIN horarios   hor ON hor.id_horario_fijo = hf.id_horario_fijo
              INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
              INNER JOIN Profesores p   ON p.id_profesor       = hf.id_profesor
              INNER JOIN Usuarios   u   ON u.id_usuarios       = p.id_profesor
              LEFT  JOIN Salones    s   ON s.id_salon           = hf.id_salon
+             LEFT  JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                            AND hd.fecha = CURDATE()
+             LEFT  JOIN Salones    st  ON st.id_salon          = hd.id_salon_temporal
              WHERE hor.id_grupo = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'), hf.hora_inicio`,
             [req.params.id_grupo]
@@ -326,16 +345,26 @@ app.get('/api/horario/grupo/:id_grupo', async (req, res) => {
 app.get('/api/horario/profesor/:id_profesor', async (req, res) => {
     try {
         const [rows] = await pool.execute(
-            `SELECT hf.id_horario_fijo_detalle, hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
-                    hf.id_materia, hf.id_profesor, hf.id_salon,
+            `SELECT hf.id_horario_fijo_detalle, hf.dia,
+                    COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                    COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                    hf.bloque_horario,
+                    hf.id_materia, hf.id_profesor,
+                    COALESCE(hd.id_salon_temporal, hf.id_salon) AS id_salon,
                     m.nombre_materia AS materia,
                     hor.id_grupo, g.nombre_grupo,
-                    s.nombre_salon AS numero_salon, s.piso
+                    COALESCE(st.nombre_salon, s.nombre_salon) AS numero_salon,
+                    COALESCE(st.piso, s.piso)                 AS piso,
+                    hd.motivo_cambio,
+                    (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
              FROM Horario_Fijo hf
              INNER JOIN horarios   hor ON hor.id_horario_fijo = hf.id_horario_fijo
              INNER JOIN Materias   m   ON m.id_materia        = hf.id_materia
              INNER JOIN Grupos     g   ON g.id_grupo          = hor.id_grupo
              LEFT  JOIN Salones    s   ON s.id_salon          = hf.id_salon
+             LEFT  JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                            AND hd.fecha = CURDATE()
+             LEFT  JOIN Salones    st  ON st.id_salon         = hd.id_salon_temporal
              WHERE hf.id_profesor = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'), hf.hora_inicio`,
             [req.params.id_profesor]
@@ -350,19 +379,52 @@ app.get('/api/horario/salon/:id_salon', async (req, res) => {
     const diaActual = dias[new Date().getDay()];
     try {
         const [rows] = await pool.execute(
-            `SELECT hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
-                    m.nombre_materia AS materia,
-                    h.id_grupo, g.nombre_grupo,
-                    u.nombre AS profesor_nombre
-             FROM Horario_Fijo hf
-             INNER JOIN horarios   h   ON h.id_horario_fijo   = hf.id_horario_fijo
-             INNER JOIN Grupos     g   ON g.id_grupo           = h.id_grupo
-             INNER JOIN Materias   m   ON m.id_materia         = hf.id_materia
-             INNER JOIN Profesores p   ON p.id_profesor        = hf.id_profesor
-             INNER JOIN Usuarios   u   ON u.id_usuarios        = p.id_profesor
-             WHERE hf.id_salon = ? AND hf.dia = ?
-             ORDER BY hf.hora_inicio`,
-            [req.params.id_salon, diaActual]
+            `SELECT * FROM (
+                 -- Clases fijas de este salón hoy, salvo que hayan sido reasignadas a otro salón
+                 SELECT hf.dia,
+                        COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                        COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                        hf.bloque_horario,
+                        m.nombre_materia AS materia,
+                        h.id_grupo, g.nombre_grupo,
+                        u.nombre AS profesor_nombre,
+                        hd.motivo_cambio,
+                        (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
+                 FROM Horario_Fijo hf
+                 INNER JOIN horarios   h   ON h.id_horario_fijo   = hf.id_horario_fijo
+                 INNER JOIN Grupos     g   ON g.id_grupo           = h.id_grupo
+                 INNER JOIN Materias   m   ON m.id_materia         = hf.id_materia
+                 INNER JOIN Profesores p   ON p.id_profesor        = hf.id_profesor
+                 INNER JOIN Usuarios   u   ON u.id_usuarios        = p.id_profesor
+                 LEFT  JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                                AND hd.fecha = CURDATE()
+                 WHERE hf.id_salon = ? AND hf.dia = ?
+                   AND (hd.id_salon_temporal IS NULL OR hd.id_salon_temporal = hf.id_salon)
+
+                 UNION ALL
+
+                 -- Clases reasignadas hoy hacia este salón (originalmente de otro salón)
+                 SELECT hfd.dia,
+                        hd2.hora_inicio AS hora_inicio,
+                        hd2.hora_fin    AS hora_fin,
+                        hd2.bloque_horario,
+                        m2.nombre_materia AS materia,
+                        h2.id_grupo, g2.nombre_grupo,
+                        u2.nombre AS profesor_nombre,
+                        hd2.motivo_cambio,
+                        1 AS es_dinamico
+                 FROM Horario_Dinamico hd2
+                 INNER JOIN Horario_Fijo hfd ON hfd.id_horario_fijo_detalle = hd2.id_horario_fijo_detalle
+                 INNER JOIN horarios   h2  ON h2.id_horario_fijo = hfd.id_horario_fijo
+                 INNER JOIN Grupos     g2  ON g2.id_grupo         = h2.id_grupo
+                 INNER JOIN Materias   m2  ON m2.id_materia       = hfd.id_materia
+                 INNER JOIN Profesores p2  ON p2.id_profesor      = hfd.id_profesor
+                 INNER JOIN Usuarios   u2  ON u2.id_usuarios      = p2.id_profesor
+                 WHERE hd2.id_salon_temporal = ? AND hd2.fecha = CURDATE()
+                   AND hfd.id_salon <> ? AND hfd.dia = ?
+             ) AS combinado
+             ORDER BY hora_inicio`,
+            [req.params.id_salon, diaActual, req.params.id_salon, req.params.id_salon, diaActual]
         );
         res.json({ success: true, horario: rows, dia: diaActual });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
@@ -372,18 +434,26 @@ app.get('/api/horario/salon/:id_salon', async (req, res) => {
 app.get('/api/horario/salon/:id_salon/semana', async (req, res) => {
     try {
         const [rows] = await pool.execute(
-            `SELECT hf.id_horario_fijo_detalle, hf.dia, hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
+            `SELECT hf.id_horario_fijo_detalle, hf.dia,
+                    COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                    COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                    hf.bloque_horario,
                     hf.id_materia, hf.id_profesor,
                     h.id_grupo,
                     g.nombre_grupo,
                     m.nombre_materia,
-                    u.nombre AS profesor_nombre
+                    u.nombre AS profesor_nombre,
+                    hd.motivo_cambio,
+                    (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
              FROM Horario_Fijo hf
              INNER JOIN horarios   h ON h.id_horario_fijo  = hf.id_horario_fijo
              INNER JOIN Grupos     g ON g.id_grupo          = h.id_grupo
              INNER JOIN Materias   m ON m.id_materia        = hf.id_materia
              INNER JOIN Profesores p ON p.id_profesor       = hf.id_profesor
              INNER JOIN Usuarios   u ON u.id_usuarios       = p.id_profesor
+             LEFT  JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                            AND hd.fecha = CURDATE()
+                                            AND (hd.id_salon_temporal IS NULL OR hd.id_salon_temporal = hf.id_salon)
              WHERE hf.id_salon = ?
              ORDER BY FIELD(hf.dia,'Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'), hf.hora_inicio`,
             [req.params.id_salon]
@@ -403,26 +473,57 @@ app.get('/api/dashboard/piso/:piso', async (req, res) => {
             `SELECT
                s.id_salon, s.nombre_salon AS numero_salon, s.piso, s.estado,
                ts.nombre_tipo_salon AS tipo,
-               hf.id_horario_fijo_detalle, hf.id_horario_fijo,
-               hf.id_materia, hf.id_profesor,
-               hf.hora_inicio, hf.hora_fin, hf.bloque_horario,
-               h.id_grupo,
+               o.id_horario_fijo_detalle, o.id_horario_fijo,
+               o.id_materia, o.id_profesor,
+               o.hora_inicio, o.hora_fin, o.bloque_horario,
+               o.id_grupo,
                g.nombre_grupo,
                m.nombre_materia,
-               u.nombre AS profesor_nombre
+               u.nombre AS profesor_nombre,
+               o.motivo_cambio, o.es_dinamico
              FROM Salones s
              LEFT JOIN tipo_salon ts  ON ts.id_tipo_salon   = s.tipo_salon
-             LEFT JOIN Horario_Fijo hf ON hf.id_salon = s.id_salon
-                                       AND hf.dia = ?
-                                       AND hf.bloque_horario = ?
-             LEFT JOIN horarios h     ON h.id_horario_fijo  = hf.id_horario_fijo
-             LEFT JOIN Grupos g       ON g.id_grupo          = h.id_grupo
-             LEFT JOIN Materias m     ON m.id_materia        = hf.id_materia
-             LEFT JOIN Profesores p   ON p.id_profesor       = hf.id_profesor
+             LEFT JOIN (
+                 -- Ocupación fija de hoy, salvo que haya sido reasignada a otro salón
+                 SELECT hf.id_salon,
+                        hf.id_horario_fijo_detalle, hf.id_horario_fijo,
+                        hf.id_materia, hf.id_profesor,
+                        COALESCE(hd.hora_inicio, hf.hora_inicio) AS hora_inicio,
+                        COALESCE(hd.hora_fin, hf.hora_fin)       AS hora_fin,
+                        hf.bloque_horario,
+                        h.id_grupo,
+                        hd.motivo_cambio,
+                        (hd.id_horario_dinamico IS NOT NULL) AS es_dinamico
+                 FROM Horario_Fijo hf
+                 INNER JOIN horarios h ON h.id_horario_fijo = hf.id_horario_fijo
+                 LEFT JOIN Horario_Dinamico hd ON hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle
+                                               AND hd.fecha = CURDATE()
+                 WHERE hf.dia = ? AND hf.bloque_horario = ?
+                   AND (hd.id_salon_temporal IS NULL OR hd.id_salon_temporal = hf.id_salon)
+
+                 UNION ALL
+
+                 -- Ocupación por reasignación dinámica hacia otro salón hoy
+                 SELECT hd2.id_salon_temporal AS id_salon,
+                        hfd.id_horario_fijo_detalle, hfd.id_horario_fijo,
+                        hfd.id_materia, hfd.id_profesor,
+                        hd2.hora_inicio, hd2.hora_fin, hd2.bloque_horario,
+                        h2.id_grupo,
+                        hd2.motivo_cambio,
+                        1 AS es_dinamico
+                 FROM Horario_Dinamico hd2
+                 INNER JOIN Horario_Fijo hfd ON hfd.id_horario_fijo_detalle = hd2.id_horario_fijo_detalle
+                 INNER JOIN horarios h2 ON h2.id_horario_fijo = hfd.id_horario_fijo
+                 WHERE hd2.fecha = CURDATE() AND hd2.bloque_horario = ?
+                   AND hfd.id_salon <> hd2.id_salon_temporal
+             ) AS o ON o.id_salon = s.id_salon
+             LEFT JOIN Grupos g       ON g.id_grupo          = o.id_grupo
+             LEFT JOIN Materias m     ON m.id_materia        = o.id_materia
+             LEFT JOIN Profesores p   ON p.id_profesor       = o.id_profesor
              LEFT JOIN Usuarios u     ON u.id_usuarios       = p.id_profesor
              WHERE s.piso = ?
              ORDER BY s.nombre_salon`,
-            [dia, bloque, req.params.piso]
+            [dia, bloque, bloque, req.params.piso]
         );
 
         // Eliminar duplicados por salon (por si hubiese conflicto de datos)
@@ -447,7 +548,9 @@ app.get('/api/dashboard/piso/:piso', async (req, res) => {
                 hora_inicio:     r.hora_inicio,
                 hora_fin:        r.hora_fin,
                 bloque_horario:  r.bloque_horario,
-                id_horario_fijo_detalle: r.id_horario_fijo_detalle
+                id_horario_fijo_detalle: r.id_horario_fijo_detalle,
+                motivo_cambio:   r.motivo_cambio || null,
+                es_dinamico:     !!r.es_dinamico
             } : null
         }));
 
