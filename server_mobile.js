@@ -13,9 +13,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'bdsm_cecyt9_secret_2026';
 app.use(cors());
 app.use(express.json());
 
-// Health check endpoint
-app.get('/', (_req, res) => res.sendStatus(200));
-
 // ── Pool MySQL (Railway) ──────────────────────────────────────────────────────
 let pool;
 async function connectDB() {
@@ -598,7 +595,8 @@ app.get('/api/inicio/favoritos/:boleta', async (req, res) => {
 //  HEALTH CHECK
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/health', (_, res) => res.json({ status: 'ok', time: hoyMX() + ' ' + horaMX() }));
+app.get('/',          (_, res) => res.json({ status: 'ok' }));
+app.get('/api/health',(_, res) => res.json({ status: 'ok', time: hoyMX() + ' ' + horaMX() }));
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  START
