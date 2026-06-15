@@ -1,5 +1,5 @@
 [deploy]
-startCommand = "node server.js"
+startCommand = "node server_mobile.js"
 healthcheckPath = "/"
 healthcheckTimeout = 30
 
