@@ -13,6 +13,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'bdsm_cecyt9_secret_2026';
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint
+app.get('/', (_req, res) => res.sendStatus(200));
+
 // ── Pool MySQL (Railway) ──────────────────────────────────────────────────────
 let pool;
 async function connectDB() {
