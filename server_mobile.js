@@ -294,7 +294,7 @@ app.get('/api/horario/salon/:id_salon', async (req, res) => {
     try {
         // 1. Clases movidas dinámicamente A este salón hoy
         const [dyn] = await pool.execute(
-            `SELECT hf.id_horario_fijo_detalle,
+            `SELECT hf.id_horario_fijo_detalle, hf.dia,
                     hd.hora_inicio, hd.hora_fin, hd.bloque_horario,
                     hd.id_salon_temporal AS id_salon, s.nombre_salon AS numero_salon, s.piso,
                     hf.id_materia, m.nombre_materia AS materia,
@@ -425,6 +425,24 @@ app.get('/api/horario/profesor/:id_profesor', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 //  SALONES
 // ══════════════════════════════════════════════════════════════════════════════
+
+// Salones por piso (recalcula estados antes de devolver)
+app.get('/api/salones/piso/:piso', async (req, res) => {
+    try {
+        await recalcularEstadosSalones();
+        const piso = parseInt(req.params.piso);
+        const [rows] = await pool.execute(
+            `SELECT s.id_salon, s.nombre_salon AS numero_salon, s.piso,
+                    ts.nombre_tipo_salon AS tipo, s.estado
+             FROM Salones s
+             LEFT JOIN tipo_salon ts ON ts.id_tipo_salon = s.tipo_salon
+             WHERE s.piso = ?
+             ORDER BY s.nombre_salon`,
+            [piso]
+        );
+        res.json({ success: true, salones: rows });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
 
 // Buscar salones (recalcula estados antes de devolver)
 app.post('/api/salones/buscar', async (req, res) => {
