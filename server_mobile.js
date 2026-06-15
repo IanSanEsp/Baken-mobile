@@ -587,6 +587,10 @@ app.put('/api/favoritos/grupo/mostrar', async (req, res) => {
 app.get('/api/inicio/favoritos/:boleta', async (req, res) => {
     try {
         await recalcularEstadosSalones();
+        const fecha = hoyMX();
+        const hora  = horaMX();
+        const dia   = diaMX();
+
         const [salones] = await pool.execute(
             `SELECT s.id_salon, s.nombre_salon AS numero_salon, s.piso,
                     ts.nombre_tipo_salon AS tipo, s.estado, sf.mostrar_inicio
@@ -597,6 +601,50 @@ app.get('/api/inicio/favoritos/:boleta', async (req, res) => {
              ORDER BY sf.fecha_agregado`,
             [req.params.boleta]
         );
+
+        // Enriquecer cada salón con la clase activa en este momento
+        if (salones.length > 0) {
+            const ids = salones.map(s => s.id_salon);
+            const ph  = ids.map(() => '?').join(',');
+
+            const [fijoClases] = await pool.execute(
+                `SELECT hf.id_salon, hf.hora_inicio, hf.hora_fin,
+                        g.nombre_grupo, m.nombre_materia AS materia
+                 FROM Horario_Fijo hf
+                 INNER JOIN horarios hor ON hor.id_horario_fijo = hf.id_horario_fijo
+                 INNER JOIN Grupos g     ON g.id_grupo  = hor.id_grupo
+                 INNER JOIN Materias m   ON m.id_materia = hf.id_materia
+                 WHERE hf.id_salon IN (${ph})
+                   AND hf.dia = ? AND hf.hora_inicio <= ? AND hf.hora_fin > ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM Horario_Dinamico hd
+                       WHERE hd.id_horario_fijo_detalle = hf.id_horario_fijo_detalle AND hd.fecha = ?
+                   )`,
+                [...ids, dia, hora, hora, fecha]
+            );
+
+            const [dynClases] = await pool.execute(
+                `SELECT hd.id_salon_temporal AS id_salon, hd.hora_inicio, hd.hora_fin,
+                        g.nombre_grupo, m.nombre_materia AS materia
+                 FROM Horario_Dinamico hd
+                 INNER JOIN Horario_Fijo hf ON hf.id_horario_fijo_detalle = hd.id_horario_fijo_detalle
+                 INNER JOIN horarios hor    ON hor.id_horario_fijo = hf.id_horario_fijo
+                 INNER JOIN Grupos g        ON g.id_grupo  = hor.id_grupo
+                 INNER JOIN Materias m      ON m.id_materia = hf.id_materia
+                 WHERE hd.id_salon_temporal IN (${ph})
+                   AND hd.fecha = ? AND hd.hora_inicio <= ? AND hd.hora_fin > ?`,
+                [...ids, fecha, hora, hora]
+            );
+
+            const claseMap = {};
+            for (const c of fijoClases)  claseMap[c.id_salon] = c;
+            for (const c of dynClases)   claseMap[c.id_salon] = c; // dinámico tiene precedencia
+
+            for (const s of salones) {
+                s.clase_activa = claseMap[s.id_salon] || null;
+            }
+        }
+
         const [grupos] = await pool.execute(
             `SELECT g.id_grupo, g.nombre_grupo, g.semestre, g.turno, gf.mostrar_inicio
              FROM Grupos_Favoritos gf
